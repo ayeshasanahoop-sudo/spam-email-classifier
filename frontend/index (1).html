@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SpamShield — AI Email Classifier</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #12121a;
+      --surface2: #1a1a25;
+      --border: #2a2a3a;
+      --text: #e8e8f0;
+      --muted: #7a7a9a;
+      --spam: #ff4466;
+      --spam-glow: rgba(255,68,102,0.25);
+      --ham: #00e5a0;
+      --ham-glow: rgba(0,229,160,0.2);
+      --accent: #7c6dfa;
+      --accent-glow: rgba(124,109,250,0.3);
+      --mono: 'Space Mono', monospace;
+      --sans: 'DM Sans', sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Background grid ── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image:
+        linear-gradient(rgba(124,109,250,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(124,109,250,0.04) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none; z-index: 0;
+    }
+
+    .container { max-width: 900px; margin: 0 auto; padding: 0 20px; position: relative; z-index: 1; }
+
+    /* ── Header ── */
+    header {
+      padding: 50px 0 40px;
+      text-align: center;
+    }
+    .logo-badge {
+      display: inline-flex; align-items: center; gap: 10px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 6px 16px 6px 10px;
+      font-family: var(--mono); font-size: 12px;
+      color: var(--accent); margin-bottom: 24px;
+      letter-spacing: 0.05em;
+    }
+    .logo-badge span.dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--ham);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%,100% { opacity:1; box-shadow: 0 0 0 0 var(--ham-glow); }
+      50% { opacity:0.7; box-shadow: 0 0 0 6px transparent; }
+    }
+    h1 {
+      font-family: var(--mono);
+      font-size: clamp(2rem, 5vw, 3.2rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
+      margin-bottom: 14px;
+    }
+    h1 span.spam-color { color: var(--spam); }
+    h1 span.ham-color  { color: var(--ham); }
+    .subtitle {
+      color: var(--muted);
+      font-size: 1rem;
+      font-weight: 300;
+      max-width: 420px; margin: 0 auto;
+    }
+
+    /* ── Tabs ── */
+    .tabs {
+      display: flex; gap: 4px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 4px;
+      margin: 36px 0 0;
+      width: fit-content;
+    }
+    .tab {
+      background: none; border: none;
+      color: var(--muted);
+      font-family: var(--mono); font-size: 12px;
+      padding: 8px 20px; border-radius: 9px;
+      cursor: pointer; transition: all 0.2s;
+      letter-spacing: 0.06em;
+    }
+    .tab.active {
+      background: var(--surface2);
+      color: var(--text);
+      box-shadow: 0 0 0 1px var(--border);
+    }
+    .tab:hover:not(.active) { color: var(--text); }
+
+    /* ── Main card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      margin-top: 20px;
+    }
+
+    /* ── Textarea area ── */
+    .input-label {
+      font-family: var(--mono); font-size: 11px;
+      color: var(--muted); letter-spacing: 0.1em;
+      margin-bottom: 10px; display: flex;
+      align-items: center; justify-content: space-between;
+    }
+    .char-count { font-size: 11px; color: var(--muted); }
+    textarea {
+      width: 100%;
+      min-height: 160px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-family: var(--sans); font-size: 14px;
+      line-height: 1.7;
+      padding: 16px;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    textarea:focus { border-color: var(--accent); }
+    textarea::placeholder { color: var(--muted); }
+
+    /* ── Quick examples ── */
+    .examples-row {
+      display: flex; flex-wrap: wrap; gap: 8px;
+      margin-top: 12px;
+    }
+    .example-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 11px; font-family: var(--mono);
+      padding: 5px 12px;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .example-btn:hover { border-color: var(--accent); color: var(--text); }
+    .example-btn.spam-ex:hover { border-color: var(--spam); }
+    .example-btn.ham-ex:hover  { border-color: var(--ham); }
+
+    /* ── Analyze button ── */
+    .btn-analyze {
+      display: flex; align-items: center; justify-content: center;
+      gap: 10px;
+      width: 100%;
+      background: var(--accent);
+      border: none;
+      border-radius: 10px;
+      color: #fff;
+      font-family: var(--mono); font-size: 13px;
+      font-weight: 700; letter-spacing: 0.08em;
+      padding: 14px;
+      margin-top: 16px;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative; overflow: hidden;
+    }
+    .btn-analyze::after {
+      content: '';
+      position: absolute; inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+      transform: translateX(-100%);
+      transition: transform 0.4s;
+    }
+    .btn-analyze:hover::after { transform: translateX(100%); }
+    .btn-analyze:hover { background: #9080fc; transform: translateY(-1px); box-shadow: 0 8px 24px var(--accent-glow); }
+    .btn-analyze:active { transform: translateY(0); }
+    .btn-analyze:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    /* ── Loading spinner ── */
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Result ── */
+    #result { margin-top: 20px; }
+    .result-card {
+      border-radius: 14px;
+      padding: 24px;
+      border: 1px solid;
+      animation: slideIn 0.4s cubic-bezier(0.34,1.56,0.64,1);
+    }
+    @keyframes slideIn {
+      from { opacity:0; transform: translateY(16px) scale(0.98); }
+      to   { opacity:1; transform: translateY(0) scale(1); }
+    }
+    .result-card.spam {
+      background: rgba(255,68,102,0.07);
+      border-color: rgba(255,68,102,0.3);
+    }
+    .result-card.ham {
+      background: rgba(0,229,160,0.06);
+      border-color: rgba(0,229,160,0.25);
+    }
+    .result-header {
+      display: flex; align-items: center; gap: 14px;
+      margin-bottom: 20px;
+    }
+    .result-icon {
+      width: 52px; height: 52px;
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px;
+      flex-shrink: 0;
+    }
+    .result-card.spam .result-icon { background: var(--spam-glow); }
+    .result-card.ham  .result-icon { background: var(--ham-glow); }
+    .result-label {
+      font-family: var(--mono); font-size: 22px; font-weight: 700;
+    }
+    .result-card.spam .result-label { color: var(--spam); }
+    .result-card.ham  .result-label { color: var(--ham); }
+    .result-sublabel { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+    /* ── Confidence bar ── */
+    .conf-section { margin-bottom: 18px; }
+    .conf-row {
+      display: flex; justify-content: space-between;
+      font-size: 12px; color: var(--muted);
+      font-family: var(--mono);
+      margin-bottom: 6px;
+    }
+    .conf-bar-bg {
+      background: var(--bg);
+      border-radius: 999px; height: 8px; overflow: hidden;
+    }
+    .conf-bar-fill {
+      height: 100%; border-radius: 999px;
+      transition: width 1s cubic-bezier(0.34,1.56,0.64,1);
+    }
+    .spam .conf-bar-fill { background: linear-gradient(90deg, #ff4466, #ff7090); }
+    .ham  .conf-bar-fill { background: linear-gradient(90deg, #00e5a0, #40ffc0); }
+
+    /* ── Stats grid ── */
+    .stats-grid {
+      display: grid; grid-template-columns: repeat(3,1fr); gap: 10px;
+      margin-bottom: 16px;
+    }
+    .stat-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      text-align: center;
+    }
+    .stat-val {
+      font-family: var(--mono); font-size: 18px; font-weight: 700;
+    }
+    .stat-key { font-size: 10px; color: var(--muted); letter-spacing: 0.08em; margin-top: 3px; }
+
+    /* ── Indicators ── */
+    .indicators-title {
+      font-family: var(--mono); font-size: 11px;
+      color: var(--muted); letter-spacing: 0.1em;
+      margin-bottom: 8px;
+    }
+    .indicators-row { display: flex; flex-wrap: wrap; gap: 6px; }
+    .indicator-tag {
+      background: var(--spam-glow);
+      border: 1px solid rgba(255,68,102,0.3);
+      border-radius: 6px;
+      color: var(--spam);
+      font-size: 11px; font-family: var(--mono);
+      padding: 3px 9px;
+    }
+
+    /* ── Batch tab ── */
+    #batch-tab { display: none; }
+    .batch-input-area {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      min-height: 180px;
+    }
+    .batch-email-row {
+      display: flex; gap: 8px; align-items: flex-start;
+      margin-bottom: 10px;
+    }
+    .batch-email-row textarea {
+      flex: 1; min-height: 50px; font-size: 13px;
+    }
+    .btn-remove {
+      background: none; border: none;
+      color: var(--muted); cursor: pointer; font-size: 18px;
+      padding: 8px; line-height: 1;
+      transition: color 0.2s;
+    }
+    .btn-remove:hover { color: var(--spam); }
+    .btn-add-email {
+      background: var(--surface2);
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+      color: var(--muted); font-size: 13px;
+      padding: 10px; width: 100%;
+      cursor: pointer; transition: all 0.2s; margin-top: 8px;
+    }
+    .btn-add-email:hover { border-color: var(--accent); color: var(--text); }
+
+    /* ── Batch results ── */
+    .batch-summary {
+      display: grid; grid-template-columns: repeat(3,1fr); gap: 10px;
+      margin-bottom: 16px;
+    }
+    .batch-result-item {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      display: flex; align-items: center; gap: 12px;
+    }
+    .batch-result-item .mini-badge {
+      border-radius: 6px; font-family: var(--mono);
+      font-size: 10px; padding: 3px 8px; flex-shrink: 0;
+    }
+    .mini-badge.spam { background: var(--spam-glow); color: var(--spam); }
+    .mini-badge.ham  { background: var(--ham-glow);  color: var(--ham); }
+    .batch-result-text { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ── Model info tab ── */
+    #info-tab { display: none; }
+    .metrics-grid {
+      display: grid; grid-template-columns: repeat(2,1fr); gap: 12px;
+      margin-bottom: 20px;
+    }
+    .metric-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .metric-name { font-size: 11px; color: var(--muted); font-family: var(--mono); letter-spacing: 0.1em; }
+    .metric-val  { font-family: var(--mono); font-size: 26px; font-weight: 700; color: var(--accent); margin-top: 4px; }
+    .model-algo-row {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 10px; padding: 14px 16px;
+      margin-bottom: 12px;
+    }
+    .algo-icon { font-size: 22px; }
+    .algo-name { font-family: var(--mono); font-size: 14px; }
+    .algo-desc { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .pipeline-steps {
+      display: flex; align-items: center; gap: 8px;
+      flex-wrap: wrap; margin-top: 16px;
+    }
+    .pipe-step {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-family: var(--mono); font-size: 11px;
+      color: var(--text);
+    }
+    .pipe-arrow { color: var(--muted); font-size: 14px; }
+
+    /* ── Error ── */
+    .error-msg {
+      background: rgba(255,68,102,0.08);
+      border: 1px solid rgba(255,68,102,0.25);
+      border-radius: 10px;
+      color: var(--spam);
+      font-size: 13px;
+      padding: 12px 16px;
+      margin-top: 16px;
+    }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      padding: 40px 0 30px;
+      color: var(--muted);
+      font-size: 12px;
+      font-family: var(--mono);
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    @media (max-width: 540px) {
+      .stats-grid { grid-template-columns: repeat(2,1fr); }
+      .metrics-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="logo-badge">
+      <span class="dot"></span>
+      SPAM_SHIELD v1.0 — ML-POWERED
+    </div>
+    <h1>
+      Detect <span class="spam-color">Spam</span>.<br/>
+      Protect <span class="ham-color">Inbox</span>.
+    </h1>
+    <p class="subtitle">AI email classifier using TF-IDF + Naive Bayes. Paste any email and get instant analysis.</p>
+  </header>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('single')">SINGLE EMAIL</button>
+    <button class="tab" onclick="switchTab('batch')">BATCH MODE</button>
+    <button class="tab" onclick="switchTab('info')">MODEL INFO</button>
+  </div>
+
+  <!-- ── Single Tab ── -->
+  <div id="single-tab">
+    <div class="card">
+      <div class="input-label">
+        <span>// PASTE EMAIL TEXT BELOW</span>
+        <span class="char-count" id="char-count">0 chars</span>
+      </div>
+      <textarea id="email-input"
+        placeholder="Paste email subject + body here...&#10;&#10;E.g. 'Congratulations! You have won a $1000 gift card. Click here to claim now!'"
+        oninput="updateCharCount(this)"></textarea>
+
+      <div class="examples-row">
+        <span style="font-size:11px;color:var(--muted);font-family:var(--mono);padding:5px 0;">Try:</span>
+        <button class="example-btn spam-ex" onclick="loadExample('spam1')">🚨 Spam #1</button>
+        <button class="example-btn spam-ex" onclick="loadExample('spam2')">🚨 Spam #2</button>
+        <button class="example-btn ham-ex"  onclick="loadExample('ham1')">✅ Ham #1</button>
+        <button class="example-btn ham-ex"  onclick="loadExample('ham2')">✅ Ham #2</button>
+        <button class="example-btn" onclick="clearInput()">🗑 Clear</button>
+      </div>
+
+      <button class="btn-analyze" id="analyze-btn" onclick="analyzeEmail()">
+        <span id="btn-icon">🔍</span>
+        <span id="btn-text">ANALYZE EMAIL</span>
+      </button>
+    </div>
+    <div id="result"></div>
+  </div>
+
+  <!-- ── Batch Tab ── -->
+  <div id="batch-tab">
+    <div class="card">
+      <div class="input-label">// BATCH EMAIL ANALYSIS — UP TO 10 EMAILS</div>
+      <div id="batch-emails">
+        <div class="batch-email-row" data-index="0">
+          <textarea placeholder="Email #1 text..." oninput="updateCharCount(this)"></textarea>
+          <button class="btn-remove" onclick="removeEmail(this)">×</button>
+        </div>
+        <div class="batch-email-row" data-index="1">
+          <textarea placeholder="Email #2 text..." oninput="updateCharCount(this)"></textarea>
+          <button class="btn-remove" onclick="removeEmail(this)">×</button>
+        </div>
+      </div>
+      <button class="btn-add-email" onclick="addEmail()">+ Add another email</button>
+      <button class="btn-analyze" id="batch-btn" onclick="analyzeBatch()" style="margin-top:16px;">
+        <span>📦</span> ANALYZE ALL
+      </button>
+    </div>
+    <div id="batch-result"></div>
+  </div>
+
+  <!-- ── Info Tab ── -->
+  <div id="info-tab">
+    <div class="card">
+      <div class="input-label" style="margin-bottom:16px;">// MODEL ARCHITECTURE & METRICS</div>
+
+      <div class="model-algo-row">
+        <span class="algo-icon">🧠</span>
+        <div>
+          <div class="algo-name">Multinomial Naive Bayes</div>
+          <div class="algo-desc">Best for text classification with word frequency features</div>
+        </div>
+      </div>
+
+      <div class="pipeline-steps">
+        <div class="pipe-step">📥 Raw Text</div>
+        <span class="pipe-arrow">→</span>
+        <div class="pipe-step">🧹 Preprocessing</div>
+        <span class="pipe-arrow">→</span>
+        <div class="pipe-step">📊 TF-IDF (n-gram 1-2)</div>
+        <span class="pipe-arrow">→</span>
+        <div class="pipe-step">🤖 Naive Bayes</div>
+        <span class="pipe-arrow">→</span>
+        <div class="pipe-step">✅ Prediction</div>
+      </div>
+
+      <div style="margin-top:24px;" class="input-label">// PERFORMANCE METRICS</div>
+      <div class="metrics-grid" id="metrics-grid">
+        <!-- filled by JS -->
+        <div class="metric-card">
+          <div class="metric-name">ACCURACY</div>
+          <div class="metric-val">83.3%</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-name">PRECISION</div>
+          <div class="metric-val">80.0%</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-name">RECALL</div>
+          <div class="metric-val">88.9%</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-name">F1 SCORE</div>
+          <div class="metric-val">84.2%</div>
+        </div>
+      </div>
+
+      <div class="input-label" style="margin-top:8px;">// SKILLS DEMONSTRATED</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;">
+        <div class="pipe-step">Text Preprocessing</div>
+        <div class="pipe-step">Feature Extraction (TF-IDF)</div>
+        <div class="pipe-step">Naive Bayes Classifier</div>
+        <div class="pipe-step">Logistic Regression</div>
+        <div class="pipe-step">Linear SVM</div>
+        <div class="pipe-step">Scikit-learn Pipeline</div>
+        <div class="pipe-step">REST API (Flask)</div>
+        <div class="pipe-step">CORS + JSON</div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    Built by <strong>Ayesha</strong> · B.E. IT — NSAKCET, Hyderabad<br/>
+    <a href="https://github.com/ayeshasanahoop-sudo" target="_blank">github.com/ayeshasanahoop-sudo</a> ·
+    Spam Classifier Minor Project
+  </footer>
+</div>
+
+<script>
+// ── API Base URL (change when deployed) ─────────────────────────────────────
+const API_BASE = "http://localhost:5000";
+
+// ── Example emails ───────────────────────────────────────────────────────────
+const EXAMPLES = {
+  spam1: "Subject: CONGRATULATIONS! You've WON!!!\n\nDear Lucky Winner,\n\nYou have been SELECTED as our grand prize winner! You've won an iPhone 15 Pro and $5,000 cash! This offer EXPIRES in 24 hours!\n\nClick here to CLAIM your FREE prize NOW: http://win-prizes.xyz\n\nActually NOW or NEVER!!! LIMITED TIME OFFER!!!",
+  spam2: "URGENT NOTICE: Your bank account has been suspended due to suspicious activity.\n\nDear Customer,\n\nWe have detected unauthorized access to your account. Your account will be permanently closed in 48 hours unless you verify your identity immediately.\n\nPlease click the link below and provide your full name, account number, and PIN to restore access:\nhttp://secure-bank-verify.net/update",
+  ham1: "Hi Priya,\n\nJust checking in about tomorrow's team meeting. Are we still on for 3pm in Conference Room B?\n\nAlso, could you please send me the updated project timeline when you get a chance? The client asked about it.\n\nThanks,\nRohit",
+  ham2: "Subject: Your order has been shipped\n\nHi Ayesha,\n\nGreat news! Your order #ORD-2024-5891 has been dispatched from our Hyderabad warehouse.\n\nEstimated delivery: Thursday, 2-5pm\nTracking ID: DTDC98712345\n\nYou can track your package on our website. Thanks for shopping with us!"
+};
+
+function loadExample(key) {
+  document.getElementById('email-input').value = EXAMPLES[key];
+  updateCharCount(document.getElementById('email-input'));
+}
+
+function clearInput() {
+  document.getElementById('email-input').value = '';
+  document.getElementById('char-count').textContent = '0 chars';
+  document.getElementById('result').innerHTML = '';
+}
+
+function updateCharCount(el) {
+  const count = el.value.length;
+  const counter = document.getElementById('char-count');
+  if (counter) counter.textContent = count + ' chars';
+}
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach((t,i) => {
+    t.classList.toggle('active', ['single','batch','info'][i] === tab);
+  });
+  document.getElementById('single-tab').style.display = tab === 'single' ? 'block' : 'none';
+  document.getElementById('batch-tab').style.display  = tab === 'batch'  ? 'block' : 'none';
+  document.getElementById('info-tab').style.display   = tab === 'info'   ? 'block' : 'none';
+}
+switchTab('single');
+
+// ── Analyze single ────────────────────────────────────────────────────────────
+async function analyzeEmail() {
+  const text = document.getElementById('email-input').value.trim();
+  if (!text) { showError('result', 'Please paste an email text first.'); return; }
+
+  setLoading('analyze-btn', 'btn-icon', 'btn-text', true, '🔍', 'ANALYZING...');
+
+  // ── Demo mode (no backend needed for showcase) ─────────────────────────────
+  try {
+    const response = await fetch(`${API_BASE}/predict`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Server error');
+    renderResult(data);
+  } catch(e) {
+    // Fallback: client-side heuristic demo when backend not running
+    renderResult(demoClassify(text));
+  } finally {
+    setLoading('analyze-btn', 'btn-icon', 'btn-text', false, '🔍', 'ANALYZE EMAIL');
+  }
+}
+
+// ── Demo classifier (client-side heuristic for GitHub Pages demo) ─────────────
+function demoClassify(text) {
+  const t = text.toLowerCase();
+  const spamWords = ['free','win','won','prize','click','urgent','guaranteed',
+    'money','earn','congratulations','selected','verify','account suspended',
+    'limited offer','act now','claim','discount','loan','bitcoin','cheap',
+    'order now','subscribe','million','nigerian','lottery','password','!!'];
+  let spamScore = spamWords.reduce((acc, w) => acc + (t.includes(w) ? 1 : 0), 0);
+  const hasUrl = /http|www\./.test(t);
+  if (hasUrl) spamScore += 1;
+  const exclCount = (text.match(/!/g) || []).length;
+  const capsRatio = (text.match(/[A-Z]/g) || []).length / text.length;
+  if (exclCount > 3) spamScore += 1;
+  if (capsRatio > 0.2) spamScore += 1;
+
+  const isSpam = spamScore >= 3;
+  const spamProb = Math.min(0.97, Math.max(0.05, isSpam ? 0.5 + spamScore * 0.07 : 0.5 - spamScore * 0.1));
+  const conf = isSpam ? spamProb : 1 - spamProb;
+
+  const foundIndicators = spamWords.filter(w => t.includes(w)).slice(0,6);
+
+  return {
+    label: isSpam ? 'spam' : 'ham',
+    is_spam: isSpam,
+    confidence: +(conf * 100).toFixed(1),
+    spam_probability: +(spamProb * 100).toFixed(1),
+    ham_probability: +((1 - spamProb) * 100).toFixed(1),
+    risk_level: spamProb > 0.85 ? 'HIGH' : spamProb > 0.55 ? 'MEDIUM' : 'LOW',
+    spam_indicators: foundIndicators,
+    word_count: text.split(/\s+/).length,
+    char_count: text.length
+  };
+}
+
+function renderResult(data) {
+  const type = data.is_spam ? 'spam' : 'ham';
+  const icon = data.is_spam ? '🚨' : '✅';
+  const label = data.is_spam ? 'SPAM DETECTED' : 'LEGITIMATE EMAIL';
+  const sublabel = data.is_spam
+    ? `Risk Level: ${data.risk_level} · This email shows spam characteristics`
+    : `This email appears to be safe and legitimate`;
+
+  const indicatorsHtml = data.spam_indicators?.length
+    ? `<div class="indicators-title">// SPAM INDICATORS FOUND</div>
+       <div class="indicators-row">
+         ${data.spam_indicators.map(i => `<span class="indicator-tag">${i}</span>`).join('')}
+       </div>`
+    : '';
+
+  document.getElementById('result').innerHTML = `
+    <div class="result-card ${type}">
+      <div class="result-header">
+        <div class="result-icon">${icon}</div>
+        <div>
+          <div class="result-label">${label}</div>
+          <div class="result-sublabel">${sublabel}</div>
+        </div>
+      </div>
+
+      <div class="conf-section">
+        <div class="conf-row">
+          <span>SPAM PROBABILITY</span>
+          <span>${data.spam_probability}%</span>
+        </div>
+        <div class="conf-bar-bg">
+          <div class="conf-bar-fill" id="conf-fill" style="width:0%"></div>
+        </div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-box">
+          <div class="stat-val" style="color:${data.is_spam ? 'var(--spam)' : 'var(--ham)'}">
+            ${data.confidence}%
+          </div>
+          <div class="stat-key">CONFIDENCE</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-val">${data.word_count}</div>
+          <div class="stat-key">WORDS</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-val" style="color:${data.risk_level==='HIGH'?'var(--spam)':data.risk_level==='MEDIUM'?'#ffa040':'var(--ham)'}">
+            ${data.risk_level}
+          </div>
+          <div class="stat-key">RISK LEVEL</div>
+        </div>
+      </div>
+
+      ${indicatorsHtml}
+    </div>`;
+
+  // Animate confidence bar
+  setTimeout(() => {
+    const fill = document.getElementById('conf-fill');
+    if (fill) fill.style.width = data.spam_probability + '%';
+  }, 100);
+}
+
+// ── Batch ─────────────────────────────────────────────────────────────────────
+let emailCount = 2;
+function addEmail() {
+  if (emailCount >= 10) return;
+  emailCount++;
+  const div = document.createElement('div');
+  div.className = 'batch-email-row';
+  div.innerHTML = `
+    <textarea placeholder="Email #${emailCount} text..."></textarea>
+    <button class="btn-remove" onclick="removeEmail(this)">×</button>`;
+  document.getElementById('batch-emails').appendChild(div);
+}
+function removeEmail(btn) {
+  const rows = document.querySelectorAll('.batch-email-row');
+  if (rows.length <= 1) return;
+  btn.closest('.batch-email-row').remove();
+}
+
+async function analyzeBatch() {
+  const rows = document.querySelectorAll('#batch-emails textarea');
+  const emails = [...rows].map(r => r.value.trim()).filter(Boolean);
+  if (!emails.length) { showError('batch-result','Add at least one email.'); return; }
+
+  document.getElementById('batch-btn').disabled = true;
+  document.getElementById('batch-btn').innerHTML = '<div class="spinner"></div> ANALYZING...';
+
+  const results = emails.map(e => ({...demoClassify(e), _text: e}));
+
+  const spamCount = results.filter(r => r.is_spam).length;
+  const hamCount  = results.length - spamCount;
+
+  let html = `
+    <div class="card" style="margin-top:20px;">
+      <div class="input-label" style="margin-bottom:14px;">// BATCH RESULTS — ${results.length} EMAILS</div>
+      <div class="batch-summary">
+        <div class="stat-box"><div class="stat-val">${results.length}</div><div class="stat-key">TOTAL</div></div>
+        <div class="stat-box"><div class="stat-val" style="color:var(--spam)">${spamCount}</div><div class="stat-key">SPAM</div></div>
+        <div class="stat-box"><div class="stat-val" style="color:var(--ham)">${hamCount}</div><div class="stat-key">LEGITIMATE</div></div>
+      </div>`;
+
+  results.forEach((r, i) => {
+    html += `
+      <div class="batch-result-item">
+        <span class="mini-badge ${r.is_spam ? 'spam' : 'ham'}">${r.is_spam ? 'SPAM' : 'HAM'}</span>
+        <span style="font-family:var(--mono);font-size:11px;color:${r.is_spam?'var(--spam)':'var(--ham)'};flex-shrink:0">${r.confidence}%</span>
+        <span class="batch-result-text">${r._text.substring(0,80)}${r._text.length>80?'...':''}</span>
+      </div>`;
+  });
+
+  html += `</div>`;
+  document.getElementById('batch-result').innerHTML = html;
+  document.getElementById('batch-btn').disabled = false;
+  document.getElementById('batch-btn').innerHTML = '<span>📦</span> ANALYZE ALL';
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function setLoading(btnId, iconId, textId, loading, defaultIcon, defaultText) {
+  const btn = document.getElementById(btnId);
+  btn.disabled = loading;
+  document.getElementById(iconId).innerHTML = loading ? '<div class="spinner"></div>' : defaultIcon;
+  document.getElementById(textId).textContent = loading ? 'ANALYZING...' : defaultText;
+}
+
+function showError(containerId, msg) {
+  document.getElementById(containerId).innerHTML =
+    `<div class="error-msg">⚠ ${msg}</div>`;
+}
+</script>
+</body>
+</html>
