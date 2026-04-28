@@ -162,7 +162,7 @@ SPAM_KEYWORDS = [
 # ── Load model ────────────────────────────────────────────────────────────────
 @st.cache_resource
 def load_model():
-    model_path = Path("model/spam_classifier.pkl")
+   model_path = Path(__file__).parent / "model" / "spam_classifier.pkl"
     if model_path.exists():
         return joblib.load(model_path)
     return None
